@@ -1,7 +1,6 @@
 use crate::{Module, Trait};
 use sp_core::H256;
-use frame_support::{impl_outer_origin, parameter_types, weights::Weight,
-    traits::{OnFinalize, OnInitialize}};
+use frame_support::{impl_outer_origin, parameter_types, weights::Weight, traits::{OnFinalize, OnInitialize}};
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup}, testing::Header, Perbill,
 };
@@ -56,6 +55,8 @@ type Randomness = pallet_randomness_collective_flip::Module<Test>;
 impl Trait for Test {
     type Event = ();
     type Randomness = Randomness;
+    type KittyIndex = u32;
+
 }
 
 pub type Kitties = Module<Test>;
