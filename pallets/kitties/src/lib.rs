@@ -12,7 +12,7 @@ use sp_runtime::DispatchError;
 use sp_io::hashing::blake2_128;
 use frame_support::sp_runtime::traits::{Bounded, AtLeast32Bit};
 // use frame_support::traits::{ReservableCurrency, Currency};
-use frame_support::traits::Vec;
+use frame_support::traits::{Vec, Currency, ReservableCurrency, Get};
 use sp_std::vec;
 
 #[cfg(test)]
@@ -46,19 +46,29 @@ pub struct Kitty(
 // 	pub children:u32,
 // }
 
+type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as frame_system::Trait>::AccountId>>::Balance;
 
 //KittyIndex 实现了 frame_system::Trait 中的类型
 pub trait Trait: frame_system::Trait {
 	type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
 	type Randomness: Randomness<Self::Hash>;
+	// 定义KittyIndex类型，要求实现指定trait
+	// Parameter 表示可用于函数参数传递
+	// AtLeast32Bit 表示转换为u32不会造成数据丢失
+	// Bounded表示包含上界和下界
+	// Default 表示有默认值
+	// Copy 表示可以实现Copy 方法
 	type KittyIndex: Parameter + AtLeast32Bit + Bounded + Default + Copy;
-	// type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
+	//货币类型，用于质押等资产相关的操作
+	type NewKittyReserve: Get<BalanceOf<Self>>;
+	type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
 }
 
 
 decl_storage! {
 	trait Store for Module<T: Trait> as Kitties {
 		//结构体映射
+
 		pub Kitties get(fn kitties):map hasher(blake2_128_concat) <T as Trait>::KittyIndex => Option<Kitty>;
 		//全局小猫咪数量
 		pub KittiesCount get(fn kitties_count):<T as Trait>::KittyIndex;
@@ -94,6 +104,8 @@ decl_error! {
 		InvalidKittyId,
 		RequireDifferentParent,
 		NotKittyOwner,
+		NotEnoughMoney,
+		KittyNotExists,
 	}
 }
 
@@ -110,6 +122,9 @@ decl_module! {
 			let kitty_id =Self::next_kitty_id()?;
 			let dna = Self::random_value(&sender);
 			let kitty = Kitty(dna);
+
+			T::Currency::reserve(&sender, T::NewKittyReserve::get()).map_err(|_| Error::<T>::NotEnoughMoney)?;
+
 			Self::insert_kitty(&sender,kitty_id,kitty);
 			Self::deposit_event(RawEvent::Created(sender,kitty_id));
 		}
@@ -176,15 +191,23 @@ impl<T:Trait> Module<T>{
 
 
 	fn do_breed(sender:&T::AccountId,kitty_id_1:<T as Trait>::KittyIndex,kitty_id_2:<T as Trait>::KittyIndex) -> sp_std::result::Result<<T as Trait>::KittyIndex,DispatchError>{
-		let kitty1 = Self::kitties(kitty_id_1).ok_or(Error::<T>::InvalidKittyId)?;
-		let kitty2 = Self::kitties(kitty_id_2).ok_or(Error::<T>::InvalidKittyId)?;
 
+
+		//检测`是否同一只猫
 		ensure!(kitty_id_1 != kitty_id_2,Error::<T>::RequireDifferentParent);
+
+		// 判断kittyIndex是否存在
+		let owner1 = Self::kitty_owner(kitty_id_1).ok_or(Error::<T>::KittyNotExists)?;
+		let owner2 = Self::kitty_owner(kitty_id_2).ok_or(Error::<T>::KittyNotExists)?;
 
 		// 判断KittyIndex是否属于发送者
 		ensure!(owner1 == *sender, Error::<T>::NotKittyOwner);
 		ensure!(owner2 == *sender, Error::<T>::NotKittyOwner);
 
+
+		// 判断结构体存在
+		let kitty1 = Self::kitties(kitty_id_1).ok_or(Error::<T>::InvalidKittyId)?;
+		let kitty2 = Self::kitties(kitty_id_2).ok_or(Error::<T>::InvalidKittyId)?;
 
 		let kitty_id = Self::next_kitty_id()?;
 
@@ -196,7 +219,6 @@ impl<T:Trait> Module<T>{
 		for i in 0..kitty1_dna.len(){
 			new_dna[i] = combine_dna(kitty1_dna[i],kitty2_dna[i],selector[i]);
 		}
-		Self::insert_kitty(sender,kitty_id,Kitty(new_dna));
 
 		//填入孵化的父母信息
 		<KittyParents<T>>::insert(kitty_id,(kitty_id_1,kitty_id_2));
@@ -210,6 +232,8 @@ impl<T:Trait> Module<T>{
 		Self::check_brother(kitty_id);
 		// //填入孵化的孩子信息或者说后代们的信息
 		// <KittyChildren<T>>::insert((kitty_id_1,kitty_id_2),kitty_id);
+		T::Currency::reserve(&sender, T::NewKittyReserve::get()).map_err(|_| Error::<T>::NotEnoughMoney)?;
+		Self::insert_kitty(sender,kitty_id,Kitty(new_dna));
 		Ok(kitty_id)
 	}
 	fn check_children(kitty_id: <T as Trait>::KittyIndex, kitty_id_1: <T as Trait>::KittyIndex, kitty_id_2: <T as Trait>::KittyIndex,){
