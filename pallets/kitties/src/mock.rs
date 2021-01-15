@@ -6,7 +6,7 @@ use sp_runtime::{
 };
 use frame_system as system;
 use pallet_balances as balances;
-use crate::mock::system::GenesisConfig;
+
 
 impl_outer_origin! {
 	pub enum Origin for Test {}
@@ -119,11 +119,11 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         .into();
 
     // GenesisConfig not found in `balances` 奇怪了
-    // balances::GenesisConfig::<Test> {
-    //     balances: vec![(1, 5000000), (2, 51000000), (3, 5200000), (4, 53000000), (5, 54000000)],
-    // }
-    //     .assimilate_storage(&mut t)
-    //     .unwrap();
+    balances::GenesisConfig::<Test> {
+        balances: vec![(1, 5000000), (2, 51000000), (3, 5200000), (4, 53000000), (5, 54000000)],
+    }
+        .assimilate_storage(&mut t)
+        .unwrap();
 
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| System::set_block_number(1));

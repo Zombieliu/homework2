@@ -106,6 +106,7 @@ decl_error! {
 		NotKittyOwner,
 		NotEnoughMoney,
 		KittyNotExists,
+		TransferToSelf,
 	}
 }
 
@@ -137,6 +138,8 @@ decl_module! {
 			let owner = Self::kitty_owner(kitty_id).ok_or(Error::<T>::InvalidKittyId)?;
 			ensure!(sender == owner, Error::<T>::NotKittyOwner);
 			// //新增删除,经链上测试无需remove,insert实际上覆盖了持有者的AccountId
+			// 不能转让给自己
+            ensure!(to != sender, Error::<T>::TransferToSelf);
 			// <KittyOwners::<T>>::remove(owner);
 			<KittyOwners::<T>>::insert(kitty_id, to.clone());
 			Self::deposit_event(RawEvent::Transferred(sender,to,kitty_id));
@@ -256,7 +259,7 @@ impl<T:Trait> Module<T>{
 					val.into_iter().filter(|&val| val != kitty_id).collect();
 				<KittyBrother<T>>::insert(kitty_id, reserve_val);
 			} else {
-				<KittyBrother<T>>::insert(kitty_id, vec![kitty_id]);
+				<KittyBrother<T>>::insert(kitty_id, vec::Vec::<T::KittyIndex>::new());
 			}
 		}
 
